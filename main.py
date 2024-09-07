@@ -149,8 +149,9 @@ async def query_and_response(query,slug:str):
     "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
     "Content-Type": "application/json"}
     data = {
-    "message": f"{query}",
-    "mode": "chat" #"query"
+        "message": f"{query}",
+        "mode": "chat" , #"query",
+        "sessionId": "identifier-to-partition-chats-by-external-id"
     }
     response = requests.post(url, headers=headers, json=data)
     ans=response.json()
