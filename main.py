@@ -141,64 +141,63 @@ async def get_workspace_chat(slug:str):
         print(f"Error fetching data. Status code: {response.status_code}")
 
 @app.post('/QnA')
-async def query_and_response(query, slug: str):
-    url = f"https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/workspace/{slug}/chat"
+async def query_and_response(request: Request):
+    body = await request.body()
+    # Decode the byte string to a regular string
+    body_str = body.decode('utf-8')
+
+    # Parse the string as JSON
+    body_json = json.loads(body_str)
+
+    # Access the value of the "query" key
+    query = body_json.get('query')
+    slug = body_json.get('slug')
+    url = f'https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/workspace/{slug}/chat'
 
     # Define your headers (optional)
     headers = {
         "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
         "Content-Type": "application/json"
     }
+
+    # Ensure the data is correctly structured
     data = {
-        "message": f"{query}",
-        "mode": "chat",  # "query",
+        "message": query,
+        "mode": "chat",  # Ensure this is the correct mode
         "sessionId": "identifier-to-partition-chats-by-external-id"
     }
+    # print(query)
+    # print(type(query))
+    # print(slug, type(slug))
+    try:
+        # Make the POST request
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()  # Raise an exception for any HTTP errors
 
-    response = requests.post(url, headers=headers, json=data)
-
-    # Check the response
-    if response.status_code == 200:
+        # Parse the response
         ans = response.json()
-        texts = []
-        for item in ans.get('sources', []):  # Handle potential missing 'sources' key
-            texts.append(item.get('text', ''))  # Handle potential missing 'text' key
 
-        result = {
-            'textResponse': ans.get('textResponse', ''),  # Handle potential missing 'textResponse' key
-            'Citations': texts
-        }
+        # Handle the successful response (status code 200)
+        if 'sources' in ans:
+            texts = [item['text'] for item in ans['sources']]
+            result = {
+                'textResponse': ans['textResponse'],
+                'Citations': texts
+            }
+        else:
+            result = {
+                'textResponse': ans.get('textResponse', 'No response text found'),
+                'Citations': 'No sources available'
+            }
         return result
-    else:
-        return {
-            "status_code": response.status_code,  # Use "status_code" instead of just the code
-            "message": "Request Failed!! Try again"  # Use consistent capitalization
-        }
 
-# async def query_and_response(query,slug:str):
-#     url=f'https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/workspace/{slug}/chat'
+    except requests.exceptions.HTTPError as http_err:
+        return {"error": f"HTTP error occurred: {http_err}"}
+    except requests.exceptions.RequestException as err:
+        return {"error": f"Request error occurred: {err}"}
+    except Exception as e:
+        return {"error": f"An error occurred: {e}"}
 
-#  # Define your headers (optional)
-#     headers = {
-#     "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
-#     "Content-Type": "application/json"}
-#     data = {
-#         "message": f"{query}",
-#         "mode": "chat" , #"query",
-#         "sessionId": "identifier-to-partition-chats-by-external-id"
-#     }
-#     response = requests.post(url, headers=headers, json=data)
-#     ans=response.json()
-#      # Check the response
-#     if response.status_code==200:
-#         texts = []
-#         for item in ans['sources']:
-#             texts.append(item['text'])
-#         result={'textResponse':ans['textResponse'],
-#                 'Citations':texts}
-#         return result
-#     else:
-#         return {response.status_code,"Request Failed!! try again"}
 
 
 @app.post("/upload")
