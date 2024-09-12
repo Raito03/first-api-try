@@ -203,18 +203,18 @@ async def query_and_response(request: Request):
 @app.post("/upload")
 async def upload_document(file: UploadFile):
     try:
-        content= await file.read()
+        content = await file.read()
         Path(file.filename).write_bytes(content)
         # storage.child(file.filename).put(file.filename)
 
-        url=   "https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/document/upload"
-        headers={
-                "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
-                "accept": "application/json"
-            }
+        url = "https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/document/upload"
+        headers = {
+            "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+            "accept": "application/json"
+        }
         files = {'file': (file.filename, content, file.content_type)}
         print(file.filename)
-        #async with httpx.AsyncClient() as client:
+        # async with httpx.AsyncClient() as client:
         response = requests.post(url, headers=headers, files=files)
 
         # Validate response status code
@@ -223,11 +223,12 @@ async def upload_document(file: UploadFile):
                 status_code=response.status_code,
                 detail=f"Error uploading file: {response.text}",
             )
-        
-        os.remove(file.filename)
-        return {"message": "File uploaded successfully"}
 
+        os.remove(file.filename)
+
+        return {"message": file.filename}
     except Exception as e:
+        print("Error: ", e)
         raise HTTPException(status_code=400, detail="File upload failed.")
 
 
