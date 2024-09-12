@@ -233,36 +233,47 @@ async def upload_document(file: UploadFile):
 
 
 @app.post("/update_embeddings")
-async def update_workspace_embeddings(filename,slug:str):
-        url=f'https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/workspace/{slug}/update-embeddings'
-        headers={
-            "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
-                "accept": "application/json"
-        }
-        file= filename
-        docs_url='https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/documents'
-        doc_header={
-            "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
-                "accept": "application/json"
-        }
-        doc_resp=requests.get(docs_url,headers=doc_header)
-        for item in doc_resp.json()['localFiles']['items'][0]['items']:
-            if file in item['name']:
-                 fileName=item['name']
-        data = {
-            "adds": [ f"custom-documents/{fileName}"
-            ],
-            "deletes": [" "]
-            
-        }
-        update_resp=requests.post(url, headers=headers, json=data)
-        if update_resp.status_code != 200:
-            raise HTTPException(
-                status_code=update_resp.status_code,
-                detail=f"Error uploading file: {update_resp.text}",
-            )
-        else:
-            return {"message": "Embeddings updated successfully"}
+async def update_workspace_embeddings(request: Request):
+    body = await request.body()
+    # Decode the byte string to a regular string
+    body_str = body.decode('utf-8')
+    # Parse the string as JSON
+    body_json = json.loads(body_str)
+
+    # Access the value of the "query" key
+    filename = body_json.get('filename')
+    slug = body_json.get('slug')
+    print(filename, slug)
+    url = f'https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/workspace/{slug}/update-embeddings'
+    headers = {
+        "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+        "accept": "application/json"
+    }
+    file = filename
+    docs_url = 'https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/documents'
+    doc_header = {
+        "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+        "accept": "application/json"
+    }
+    doc_resp = requests.get(docs_url, headers=doc_header)
+    for item in doc_resp.json()['localFiles']['items'][0]['items']:
+        if file in item['name']:
+            fileName = item['name']
+    data = {
+        "adds": [f"custom-documents/{fileName}"
+                 ],
+        "deletes": [" "]
+
+    }
+    update_resp = requests.post(url, headers=headers, json=data)
+    print(update_resp.json())
+    if update_resp.status_code != 200:
+        raise HTTPException(
+            status_code=update_resp.status_code,
+            detail=f"Error uploading file: {update_resp.text}",
+        )
+    else:
+        return {"message": "Embeddings updated successfully"}
 
 
 @app.get("/docs_list")
