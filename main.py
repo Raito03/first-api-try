@@ -163,7 +163,7 @@ async def query_and_response(request: Request):
     # Ensure the data is correctly structured
     data = {
         "message": query,
-        "mode": "chat",  # Ensure this is the correct mode
+        "mode": "query",  # Ensure this is the correct mode -- "chat"
         "sessionId": "identifier-to-partition-chats-by-external-id"
     }
     # print(query)
