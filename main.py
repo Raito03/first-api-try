@@ -201,7 +201,7 @@ async def query_and_response(request: Request):
 
 
 @app.post("/upload")
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(file: UploadFile):
     try:
         content= await file.read()
         Path(file.filename).write_bytes(content)
