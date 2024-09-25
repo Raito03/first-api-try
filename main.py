@@ -38,10 +38,10 @@ async def hello():
 #     return {"item_id": item_id, "q": q}
 @app.post('/create_workspace')
 async def new_workspace(space_name):
-    url=f'https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/workspace/new'
+    url=f'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspace/new'
     
     headers= {
-        "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+        "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
         "accept": "application/json"
         }
     
@@ -60,10 +60,10 @@ async def new_workspace(space_name):
 
 @app.get('/workspaces_present')
 async def get_workspaces():
-    url='https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/workspaces'
+    url='https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspaces'
        
     headers= {
-        "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+        "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
         "accept": "application/json"
         }
     response = requests.get(url,headers=headers)
@@ -80,11 +80,11 @@ async def get_workspaces():
 
 @app.post('/workspace/slug')
 async def get_workspace(slug:str):
-    url=f'https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/workspace/{slug}'    
+    url=f'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspace/{slug}'    
     
        
     headers= {
-        "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+        "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
         "accept": "application/json"
         }
     
@@ -101,12 +101,12 @@ async def get_workspace(slug:str):
 
 @app.delete('/delete/workspace')
 async def delete_workspace(slug:str):
-    url = f'https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/workspace/{slug}'
+    url = f'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspace/{slug}'
 
     headers = {'accept': '*/*'}
        
     headers= {
-        "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+        "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
         "accept": '*/*'
         }
 
@@ -121,10 +121,10 @@ async def delete_workspace(slug:str):
 
 @app.post('/workspace/chats')
 async def get_workspace_chat(slug:str):
-    url=f'https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/workspace/{slug}/chats'    
+    url=f'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspace/{slug}/chats'    
 
     headers= {
-        "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+        "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
         "accept": "application/json"
         }
     
@@ -152,11 +152,11 @@ async def query_and_response(request: Request):
     # Access the value of the "query" key
     query = body_json.get('query')
     slug = body_json.get('slug')
-    url = f'https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/workspace/{slug}/chat'
+    url = f'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspace/{slug}/chat'
 
     # Define your headers (optional)
     headers = {
-        "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+        "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
         "Content-Type": "application/json"
     }
 
@@ -207,9 +207,9 @@ async def upload_document(file: UploadFile):
         Path(file.filename).write_bytes(content)
         # storage.child(file.filename).put(file.filename)
 
-        url = "https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/document/upload"
+        url = "https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/document/upload"
         headers = {
-            "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+            "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
             "accept": "application/json"
         }
         files = {'file': (file.filename, content, file.content_type)}
@@ -244,15 +244,15 @@ async def update_workspace_embeddings(request: Request):
     filename = body_json.get('filename')
     slug = body_json.get('slug')
     print(filename, slug)
-    url = f'https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/workspace/{slug}/update-embeddings'
+    url = f'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspace/{slug}/update-embeddings'
     headers = {
-        "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+        "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
         "accept": "application/json"
     }
     file = filename
-    docs_url = 'https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/documents'
+    docs_url = 'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/documents'
     doc_header = {
-        "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+        "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
         "accept": "application/json"
     }
     doc_resp = requests.get(docs_url, headers=doc_header)
@@ -278,9 +278,9 @@ async def update_workspace_embeddings(request: Request):
 
 @app.get("/docs_list")
 async def list_of_docs():
-    url="https://fictional-trout-57g5wvxp594c7rxj-3001.app.github.dev/api/v1/documents"
+    url="https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/documents"
     headers= {
-        "Authorization": "Bearer YHB1KEM-G5MM5E0-GQA54BT-6ZGPDWP",
+        "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
         "accept": "application/json"
         }
     try:
