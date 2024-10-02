@@ -65,7 +65,7 @@ async def query_and_response(request: Request):
     
     data = {
         "message": query,
-        "mode": "chat",
+        "mode": "query",
         "sessionId": "identifier-to-partition-chats-by-external-id"
     }
     
