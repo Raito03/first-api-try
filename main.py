@@ -1,13 +1,90 @@
-from typing import Optional
-import json
-from fastapi import FastAPI, HTTPException, File, UploadFile, Request
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from pydantic_settings import BaseSettings
+from typing import List, Dict, Any, Optional
 import httpx
+import uvicorn
 from pathlib import Path
 import os
+import json
+import logging
+import certifi
+# Set up logging configuration
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-app = FastAPI()
+class Settings(BaseSettings):
+    API_BASE_URL: str = "https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1"
+    API_TOKEN: str = "19TPS2Z-6004AGY-K968P7Q-2BW0QCD"
+    TIMEOUT_SECONDS: int = 30  # Added timeout setting
+    
+    class Config:
+        env_file = ".env"
 
+
+
+class APIClient:
+    def __init__(self, settings: Settings):
+        self.base_url = settings.API_BASE_URL
+        self.timeout = settings.TIMEOUT_SECONDS
+        self.headers = {
+            "Authorization": f"Bearer {settings.API_TOKEN}",
+            "accept": "application/json"
+        }
+        
+    async def make_request(
+        self, 
+        method: str, 
+        endpoint: str, 
+        **kwargs
+    ) -> Any:
+        timeout = httpx.Timeout(timeout=self.timeout)
+        
+        try:
+            async with httpx.AsyncClient(timeout=timeout,verify=False) as client:
+                url = f"{self.base_url}{endpoint}"
+                response = await client.request(
+                    method=method,
+                    url=url,
+                    headers=self.headers,
+                    **kwargs
+                )
+                
+                if response.status_code not in (200, 201):
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=response.text
+                    )
+                    
+                return response.json() if response.text else None
+                
+        except httpx.TimeoutException:
+            raise HTTPException(
+                status_code=504,
+                detail="Request timed out. Please try again later."
+            )
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Network error occurred: {str(e)}"
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"An unexpected error occurred: {str(e)}"
+            )
+
+
+app = FastAPI(title="Workspace Management API")
+settings = Settings()
+api_client = APIClient(settings)
+
+# Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
@@ -18,399 +95,232 @@ app.add_middleware(
     max_age=36000
 )
 
-BASE_URL = "https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1"
-API_KEY = "19TPS2Z-6004AGY-K968P7Q-2BW0QCD"
 
-headers = {
-    "Authorization": f"Bearer {API_KEY}",
-    "accept": "application/json"
-}
+class WorkspaceResponse(BaseModel):
+    message: str
+class CreateWorkspace(BaseModel):
+    space_name: str
+    
+# Workspace operations
+@app.post('/create_workspace', response_model=WorkspaceResponse)
+async def create_workspace(request: CreateWorkspace):
+    data = {"name": request.space_name}
+    await api_client.make_request(
+        "POST", 
+        "/workspace/new",
+        json=data
+    )
+    return WorkspaceResponse(message="Workspace created successfully")
 
-async def make_request(method, url, **kwargs):
-    async with httpx.AsyncClient() as client:
-        response = await client.request(method, url, headers=headers, **kwargs)
-        response.raise_for_status()
-        return response.json()
-
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-@app.post('/create_workspace')
-async def new_workspace(space_name: str):
-    data = {"name": space_name}
-    return await make_request("POST", f"{BASE_URL}/workspace/new", json=data)
-
-@app.get('/workspaces_present')
+@app.get('/workspaces')
 async def get_workspaces():
-    return await make_request("GET", f"{BASE_URL}/workspaces")
+    return await api_client.make_request("GET", "/workspaces")
 
 @app.get('/workspace/{slug}')
 async def get_workspace(slug: str):
-    return await make_request("GET", f"{BASE_URL}/workspace/{slug}")
+    return await api_client.make_request("GET", f"/workspace/{slug}")
 
-@app.delete('/delete/workspace/{slug}')
+@app.delete('/workspace/{slug}')
 async def delete_workspace(slug: str):
-    return await make_request("DELETE", f"{BASE_URL}/workspace/{slug}")
+    await api_client.make_request("DELETE", f"/workspace/{slug}")
+    return {"message": "Workspace deleted successfully"}
 
 @app.get('/workspace/{slug}/chats')
-async def get_workspace_chat(slug: str):
-    return await make_request("GET", f"{BASE_URL}/workspace/{slug}/chats")
+async def get_workspace_chats(slug: str):
+    return await api_client.make_request("GET", f"/workspace/{slug}/chats")
 
-@app.post('/QnA')
-async def query_and_response(request: Request):
-    body = await request.json()
-    query = body.get('query')
-    slug = body.get('slug')
-    
-    data = {
-        "message": query,
-        "mode": "chat",
-        "sessionId": "identifier-to-partition-chats-by-external-id"
-    }
-    
-    response = await make_request("POST", f"{BASE_URL}/workspace/{slug}/chat", json=data)
-    
-    result = {
-        'textResponse': response.get('textResponse', 'No response text found'),
-        'Citations': [item['text'] for item in response.get('sources', [])] if 'sources' in response else 'No sources available'
-    }
-    return result
+# Q&A operations
+class QueryRequest(BaseModel):
+    query: str
+    slug: str
 
+class QueryResponse(BaseModel):
+    textResponse: str
+    citations: List[str]
+
+@app.post('/qa', response_model=QueryResponse)
+async def query_and_response(request: QueryRequest):
+    try:
+        data = {
+            "message": request.query,
+            "mode": "query",
+            "sessionId": "identifier-to-partition-chats-by-external-id"
+        }
+        
+        response = await api_client.make_request(
+            "POST",
+            f"/workspace/{request.slug}/chat",
+            json=data
+        )
+        
+        texts = [source["text"] for source in response["sources"]]
+        return QueryResponse(
+            textResponse=response["textResponse"],
+            citations=texts
+        )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process query: {str(e)}"
+        )
+
+class QueryRequestThread(BaseModel):
+    query: str
+    slug: str
+    threadSlug: str
+class QueryResponse(BaseModel):
+    textResponse: str
+    citations: List[str]
+@app.post('/qa_thread', response_model=QueryResponse)
+async def query_and_response_thread(request: QueryRequestThread):
+    try:
+        logger.info("hello")
+        data = {
+            "message": request.query,
+            "mode": "query",
+            #"sessionId": "identifier-to-partition-chats-by-external-id"
+            "userId": 1
+        }
+        
+        response = await api_client.make_request(
+            "POST",
+            f"/workspace/{request.slug}/thread/{request.threadSlug}/chat",
+            json=data
+        )
+        logger.info(f"Making request to URL: /workspace/{request.slug}/thread/{request.threadSlug}/chat")
+        texts = [source["text"] for source in response["sources"]]
+        return QueryResponse(
+            textResponse=response["textResponse"],
+            citations=texts
+        )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process query: {str(e)}"
+        )
+
+# Document operations
 @app.post("/upload")
-async def upload_document(file: UploadFile):
-    content = await file.read()
-    Path(file.filename).write_bytes(content)
-    
-    files = {'file': (file.filename, content, file.content_type)}
-    response = await make_request("POST", f"{BASE_URL}/document/upload", files=files)
-    
-    os.remove(file.filename)
-    return {"message": file.filename}
+async def upload_document(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        temp_path = Path(file.filename)
+        temp_path.write_bytes(content)
 
-@app.post("/update_embeddings")
-async def update_workspace_embeddings(request: Request):
-    body = await request.json()
-    filename = body.get('filename')
-    slug = body.get('slug')
-    
-    docs = await make_request("GET", f"{BASE_URL}/documents")
-    fileName = next((item['name'] for item in docs['localFiles']['items'][0]['items'] if filename in item['name']), None)
-    
-    if not fileName:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    data = {
-        "adds": [f"custom-documents/{fileName}"],
-        "deletes": [" "]
-    }
-    
-    return await make_request("POST", f"{BASE_URL}/workspace/{slug}/update-embeddings", json=data)
+        files = {'file': (file.filename, content, file.content_type)}
+        response = await api_client.make_request(
+            "POST",
+            "/document/upload",
+            files=files
+        )
 
-@app.get("/docs_list")
-async def list_of_docs():
-    docs = await make_request("GET", f"{BASE_URL}/documents")
-    return [item['name'] for item in docs['localFiles']['items'][0]['items']]
-
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="0.0.0.0", port=8000)
+        # Cleanup temporary file
+        os.remove(temp_path)
+        return {"message": "File uploaded successfully"}
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File upload failed: {str(e)}"
+        )
 
 
-# from typing import Optional
-# import requests
-# # import pyrebase
-# # import firebase_admin
-# import json
-# #from firebase_admin import credentials, auth
-# from fastapi import  FastAPI, HTTPException, Depends,File, UploadFile
-# from fastapi.responses import JSONResponse
-# from fastapi.requests import Request
-# from fastapi.middleware.cors import CORSMiddleware
-# import uvicorn
-# from pathlib import Path
-# import os
-# import httpx
-# #from fastapi import FastAPI
+class QueryUpdateEmbed(BaseModel):
+    slug:str
+    filename:str
+@app.post("/workspace/{slug}/update-embeddings")
+async def update_workspace_embeddings(request: QueryUpdateEmbed):
+    try:
 
-# app = FastAPI()
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=['*'],
-#     allow_credentials=True,
-#     allow_methods=['*'],
-#     allow_headers=['*'],
-#     expose_headers=["*"],
-#     max_age=36000
-# )
+        logger.info(f"Starting embedding update for workspace: {request.slug}, file: {request.filename}")
 
-# @app.get("/")
-# async def root():
-#     return {"message": "Hello World"}
-
-# @app.get('/hello')
-# async def hello():
-#     return {"message": "Hello World"}
-    
-# # @app.get("/items/{item_id}")
-# # def read_item(item_id: int, q: Optional[str] = None):
-# #     return {"item_id": item_id, "q": q}
-# @app.post('/create_workspace')
-# async def new_workspace(space_name):
-#     url=f'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspace/new'
-    
-#     headers= {
-#         "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
-#         "accept": "application/json"
-#         }
-    
-#     data={
-#         "name":f"{space_name}"
-#     }
-#     response = requests.post(url,headers=headers,json=data)
-    
-#     if response.status_code != 200:
-#             raise HTTPException(
-#                 status_code=response.status_code,
-#                 detail=f"{response.text}",
-#             )
-#     else:
-#         return {"message": "**WorkSpace created successfully**"}
-
-# @app.get('/workspaces_present')
-# async def get_workspaces():
-#     url='https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspaces'
-       
-#     headers= {
-#         "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
-#         "accept": "application/json"
-#         }
-#     response = requests.get(url,headers=headers)
-    
-#     if response.status_code != 200:
-#             raise HTTPException(
-#                 status_code=response.status_code,
-#                 detail=f"{response.text}",
-#             )
-#     else:
-#         data=json.loads(response.text)
-#         return data
+        # Get document list
+        docs = await api_client.make_request("GET", "/documents")
+        
+        if not docs or 'localFiles' not in docs:
+            raise HTTPException(status_code=404, detail="No documents found")
+            
+        # Find the matching file
+        file_name = None
+        items = docs.get('localFiles', {}).get('items', [])
+        logger.debug(f"Retrieved items from documents: {items}")
 
 
-# @app.post('/workspace/slug')
-# async def get_workspace(slug:str):
-#     url=f'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspace/{slug}'    
-    
-       
-#     headers= {
-#         "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
-#         "accept": "application/json"
-#         }
-    
-#     response = requests.get(url,headers=headers)
-    
-#     if response.status_code != 200:
-#             raise HTTPException(
-#                 status_code=response.status_code,
-#                 detail=f"{response.text}",
-#             )
-#     else:
-#         data=json.loads(response.text)
-#         return data
+        if items and len(items) > 0:
+            for item in items[0].get('items', []):
+                if request.filename in item.get('name', ''):
+                    file_name = item['name']
+                    break
+        logger.info(f"Found matching file: {file_name}")
 
-# @app.delete('/delete/workspace')
-# async def delete_workspace(slug:str):
-#     url = f'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspace/{slug}'
+        if not file_name:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"File {request.filename} not found in documents"
+            )
+            
+        data = {
+            "adds": [f"custom-documents/{file_name}"],
+            "deletes": []
+        }
+        
+        await api_client.make_request(
+            "POST",
+            f"/workspace/{request.slug}/update-embeddings",
+            json=data
+        )
+        
+        return {"message": "Embeddings updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update embeddings: {str(e)}"
+        )
 
-#     headers = {'accept': '*/*'}
-       
-#     headers= {
-#         "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
-#         "accept": '*/*'
-#         }
+@app.get("/documents", response_model=List[str])
+async def list_documents():
+    response = await api_client.make_request("GET", "/documents")
+    doc_list = response['localFiles']['items'][0]
+    return [item['name'] for item in doc_list['items']]
 
-#     # Send a DELETE request to the API endpoint
-#     response = requests.delete(url, headers=headers)
+class NewThreadResponse(BaseModel):
+    slug_thread: str
 
-#     # Check the response status code
-#     if response.status_code == 200:
-#         return {'Workspace deleted successfully!'}
-#     else:
-#         return {f'Error deleting workspace: {response.status_code} - {response.text}'}
+class NewThreadRequest(BaseModel):
+    slug: str
 
-# @app.post('/workspace/chats')
-# async def get_workspace_chat(slug:str):
-#     url=f'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspace/{slug}/chats'    
+@app.post('/create-thread', response_model=NewThreadResponse)
+async def new_thread_workspace(request: NewThreadRequest):
+    try:
+        response = await api_client.make_request(
+            method="POST",
+            endpoint=f"/workspace/{request.slug}/thread/new"
+        )
+        
+        if not response or 'thread' not in response or 'slug' not in response['thread']:
+            raise HTTPException(
+                status_code=500,
+                detail="Invalid response from server: missing slug"
+            )
+            
+        return NewThreadResponse(
+            slug_thread=response['thread']['slug']
+        )
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create new thread: {str(e)}"
+        )
 
-#     headers= {
-#         "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
-#         "accept": "application/json"
-#         }
-    
-#     response = requests.get(url,headers=headers)
-    
-#     if response.status_code == 200:
-#             # raise HTTPException(
-#             #     status_code=response.status_code,
-#             #     detail=f"{response.text}",
-#             # )
-#             data=json.loads(response.text)
-#             return data
-#     else:
-#         print(f"Error fetching data. Status code: {response.status_code}")
-
-# @app.post('/QnA')
-# async def query_and_response(request: Request):
-#     body = await request.body()
-#     # Decode the byte string to a regular string
-#     body_str = body.decode('utf-8')
-
-#     # Parse the string as JSON
-#     body_json = json.loads(body_str)
-
-#     # Access the value of the "query" key
-#     query = body_json.get('query')
-#     slug = body_json.get('slug')
-#     url = f'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspace/{slug}/chat'
-
-#     # Define your headers (optional)
-#     headers = {
-#         "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
-#         "Content-Type": "application/json"
-#     }
-
-#     # Ensure the data is correctly structured
-#     data = {
-#         "message": query,
-#         "mode": "query",  # Ensure this is the correct mode -- "chat"
-#         "sessionId": "identifier-to-partition-chats-by-external-id"
-#     }
-#     # print(query)
-#     # print(type(query))
-#     # print(slug, type(slug))
-#     try:
-#         # Make the POST request
-#         response = requests.post(url, headers=headers, json=data)
-#         response.raise_for_status()  # Raise an exception for any HTTP errors
-
-#         # Parse the response
-#         ans = response.json()
-
-#         # Handle the successful response (status code 200)
-#         if 'sources' in ans:
-#             texts = [item['text'] for item in ans['sources']]
-#             result = {
-#                 'textResponse': ans['textResponse'],
-#                 'Citations': texts
-#             }
-#         else:
-#             result = {
-#                 'textResponse': ans.get('textResponse', 'No response text found'),
-#                 'Citations': 'No sources available'
-#             }
-#         return result
-
-#     except requests.exceptions.HTTPError as http_err:
-#         return {"error": f"HTTP error occurred: {http_err}"}
-#     except requests.exceptions.RequestException as err:
-#         return {"error": f"Request error occurred: {err}"}
-#     except Exception as e:
-#         return {"error": f"An error occurred: {e}"}
-
-
-
-# @app.post("/upload")
-# async def upload_document(file: UploadFile):
-#     try:
-#         content = await file.read()
-#         Path(file.filename).write_bytes(content)
-#         # storage.child(file.filename).put(file.filename)
-
-#         url = "https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/document/upload"
-#         headers = {
-#             "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
-#             "accept": "application/json"
-#         }
-#         files = {'file': (file.filename, content, file.content_type)}
-#         print(file.filename)
-#         # async with httpx.AsyncClient() as client:
-#         response = requests.post(url, headers=headers, files=files)
-
-#         # Validate response status code
-#         if response.status_code != 200:
-#             raise HTTPException(
-#                 status_code=response.status_code,
-#                 detail=f"Error uploading file: {response.text}",
-#             )
-
-#         os.remove(file.filename)
-
-#         return {"message": file.filename}
-#     except Exception as e:
-#         print("Error: ", e)
-#         raise HTTPException(status_code=400, detail="File upload failed.")
-
-
-# @app.post("/update_embeddings")
-# async def update_workspace_embeddings(request: Request):
-#     body = await request.body()
-#     # Decode the byte string to a regular string
-#     body_str = body.decode('utf-8')
-#     # Parse the string as JSON
-#     body_json = json.loads(body_str)
-
-#     # Access the value of the "query" key
-#     filename = body_json.get('filename')
-#     slug = body_json.get('slug')
-#     print(filename, slug)
-#     url = f'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/workspace/{slug}/update-embeddings'
-#     headers = {
-#         "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
-#         "accept": "application/json"
-#     }
-#     file = filename
-#     docs_url = 'https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/documents'
-#     doc_header = {
-#         "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
-#         "accept": "application/json"
-#     }
-#     doc_resp = requests.get(docs_url, headers=doc_header)
-#     for item in doc_resp.json()['localFiles']['items'][0]['items']:
-#         if file in item['name']:
-#             fileName = item['name']
-#     data = {
-#         "adds": [f"custom-documents/{fileName}"
-#                  ],
-#         "deletes": [" "]
-
-#     }
-#     update_resp = requests.post(url, headers=headers, json=data)
-#     print(update_resp.json())
-#     if update_resp.status_code != 200:
-#         raise HTTPException(
-#             status_code=update_resp.status_code,
-#             detail=f"Error uploading file: {update_resp.text}",
-#         )
-#     else:
-#         return {"message": "Embeddings updated successfully"}
-
-
-# @app.get("/docs_list")
-# async def list_of_docs():
-#     url="https://literate-meme-7vrq4j7xv66p2x5w4-3001.app.github.dev/api/v1/documents"
-#     headers= {
-#         "Authorization": "Bearer 19TPS2Z-6004AGY-K968P7Q-2BW0QCD",
-#         "accept": "application/json"
-#         }
-#     try:
-#         async with httpx.AsyncClient() as client:
-#             response = await client.get(url, headers=headers)
-#     except Exception as exc:
-#         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
-
-#     list = response.json()
-#     doc_list= list['localFiles']['items'][0]
-#     doc_names=[]
-#     for i,item in enumerate(doc_list['items']):
-#         doc_names.append(item['name'])
-#     return doc_names
+# if __name__ == '__main__':
+#     uvicorn.run("main:app", host='127.0.0.1', port=8000, reload=True)
